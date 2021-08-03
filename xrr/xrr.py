@@ -1,3 +1,4 @@
+import logging
 import multiprocessing
 import numpy as np
 from nltk.metrics.agreement import AnnotationTask
@@ -8,7 +9,7 @@ class xRR:
     """Cross-Replication Reliability Measure (xRR) class
     """
 
-    def __init__(self, X, Y, answer_col, rater_col, object_col, dist_func="categorical"):
+    def __init__(self, X, Y, answer_col, rater_col, object_col, dist_func=categorical):
         """xRR object
         X and Y need to have same column names and numeric answer_col (encoded if categorical)
         Can accomodate missing values.
@@ -22,6 +23,8 @@ class xRR:
             dist_func (str): Distance function. defaults to categorical
         
         """
+        logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
+
         if len(X[object_col].unique()) != len(Y[object_col].unique()):
             ## TO DO: remove objects not judged by both if theres a difference
             valid_objects = np.intersect1d(X[object_col].unique(), Y[object_col].unique())
@@ -31,14 +34,22 @@ class xRR:
         self.X = X.loc[:,[rater_col,object_col,answer_col]]
         self.Y = Y.loc[:,[rater_col,object_col,answer_col]]
 
-        self.X_ = X.pivot_table(index=object_col, columns=rater_col, values=answer_col, aggfunc="first")
-        self.Y_ = Y.pivot_table(index=object_col, columns=rater_col, values=answer_col, aggfunc="first")
+        self.X_ = X.pivot_table(index=rater_col, columns=object_col, values=answer_col, aggfunc="first")
+        self.Y_ = Y.pivot_table(index=rater_col, columns=object_col, values=answer_col, aggfunc="first")
+
+        self.X_dict = self.X_.to_dict()
+        self.Y_dict = self.Y_.to_dict()
+
+        self.dict_keys = list(self.Y_dict.keys())
         
-        self.R = [self.X_.loc[i,:].dropna().values for i in self.X_.index]
-        self.S = [self.Y_.loc[i,:].dropna().values for i in self.Y_.index]
-        
+        self.R = self.X_.count().values
+        self.S = self.Y_.count().values
+
+        self.R_bold = self.R.sum()
+        self.S_bold = self.S.sum()
+
         self.dist_func = dist_func
-        self.n = len(self.R)
+        self.n = len(self.R) #equivalent to len(self.S)
         self.kappa = None
 
 
@@ -48,8 +59,10 @@ class xRR:
         Returns:
             num: observed disagreement value
         """
+        observed_disagreement = self.d_o()
+        expected_disagreement = self.d_e()
 
-        self.kappa = 1-(self.d_o()/self.d_e())
+        self.kappa = 1-(observed_disagreement/expected_disagreement)
         
         return self.kappa
 
@@ -92,12 +105,12 @@ class xRR:
         elif irr == "s":
             return t.S()
 
-    def d_o(self,workers=multiprocessing.cpu_count()):
+    def d_o(self,workers=multiprocessing.cpu_count()-1):
         """observed disagreement
 
         Args:
             n (int): number of objects
-            workers (int, optional): Number of workers for multiprocessing. Defaults to user CPU count.
+            workers (int, optional): Number of workers for multiprocessing. Defaults to user CPU count -1.
 
         Returns:
             num: observed disagreement value
@@ -108,27 +121,27 @@ class xRR:
         with multiprocessing.Pool(workers) as p:
             results = p.map(self.do_inner, ints)
             do = sum(results)
-        do /= (self.bold(self.R) + self.bold(self.S))
-        print(do)
+        do /= (self.R_bold + self.S_bold)
+        logging.info("observed disagreement", do)
         return do
 
-    def d_e(self,workers=multiprocessing.cpu_count()):
+    def d_e(self,workers=multiprocessing.cpu_count()-1):
         """expected disagreement
 
         Args:
-            workers (int, optional): Number of workers for multiprocessing. Defaults to user CPU count.
+            workers (int, optional): Number of workers for multiprocessing. Defaults to user CPU count -1.
 
         Returns:
             num: expected disagreement value
         """
-        m = self.n**2
+
         d_e = 0
         ijs = [(i,j) for i in range(self.n) for j in range(self.n)]
         with multiprocessing.Pool(workers) as p:
             results = p.map(self.de_inner, ijs)
             d_e = sum(results)
-        d_e /= (self.bold(self.R)*self.bold(self.S))
-        print(d_e)
+        d_e /= (self.R_bold*self.S_bold)
+        logging.info("expected disagreement", d_e)
         return d_e
 
     def de_inner(self,a):
@@ -142,7 +155,11 @@ class xRR:
         """
         i = a[0]
         j = a[1]
-        return sum([eval(self.dist_func+str((r,s))) for r in self.R[i] for s in self.S[j]])
+        de = 0
+        for r in self.X_dict[self.dict_keys[i]].values():
+            for s in self.Y_dict[self.dict_keys[j]].values():
+                de += self.dist_func(r,s)
+        return de
 
     def do_inner(self,i):
         """inner observed disagreement summation
@@ -153,16 +170,9 @@ class xRR:
         Returns:
             num: summation
         """
-        coeff = (len(self.R[i])+len(self.S[i]))/(len(self.R[i])*len(self.S[i]))
-        return sum([eval(self.dist_func+str((r,s))) for r in self.R[i] for s in self.S[i]])*coeff
-
-    def bold(self,X):
-        """total number of annotations in replications X
-
-        Args:
-            X (list): pivoted X or Y. list of numpy arrays
-
-        Returns:
-            int: all 
-        """
-        return sum([len(i) for i in X])
+        
+        do = 0
+        for r in self.X_dict[self.dict_keys[i]].values():
+            for s in self.Y_dict[self.dict_keys[i]].values():
+                do += self.dist_func(r,s)
+        return do * (self.R[i]+self.S[i])/(self.R[i]*self.S[i])
