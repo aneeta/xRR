@@ -23,7 +23,7 @@ class xRR:
             dist_func (str): Distance function. defaults to categorical
         
         """
-        logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
+        logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %H:%M:%S %p', level=logging.DEBUG)
 
         if len(X[object_col].unique()) != len(Y[object_col].unique()):
             ## TO DO: remove objects not judged by both if theres a difference
@@ -120,7 +120,7 @@ class xRR:
             results = p.map(self.do_inner, ints)
             do = sum(results)
         do /= (self.R_bold + self.S_bold)
-        logging.info("observed disagreement", do)
+        logging.info("observed disagreement: {}".format(do))
         return do
 
     def d_e(self,workers=multiprocessing.cpu_count()-1):
@@ -139,7 +139,7 @@ class xRR:
             results = p.map(self.de_inner, ijs)
             d_e = sum(results)
         d_e /= (self.R_bold*self.S_bold)
-        logging.info("expected disagreement", d_e)
+        logging.info("expected disagreement: {}".format(d_e))
         return d_e
 
     def de_inner(self,a):
