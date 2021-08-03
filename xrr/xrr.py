@@ -59,10 +59,8 @@ class xRR:
         Returns:
             num: observed disagreement value
         """
-        observed_disagreement = self.d_o()
-        expected_disagreement = self.d_e()
-
-        self.kappa = 1-(observed_disagreement/expected_disagreement)
+    
+        self.kappa = 1-(self.d_o()/self.d_e())
         
         return self.kappa
 
