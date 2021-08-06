@@ -105,6 +105,14 @@ class TestXRR(unittest.TestCase):
     
     def test_kappa_x(self):
         self.assertEqual(round(self.xRR_obj.kappa_x(), 7), self.expected_xRR)
+        self.assertEqual(round(self.xRR_obj.kappa, 7), self.expected_xRR)
+    
+    def test_normalized_kappa_x(self):
+        with self.assertRaises(ValueError):
+            self.xRR_obj.normalized_kappa_x("kappa")
+
+    def test_IRR(self):
+        self.assertEqual(round(self.xRR_obj._IRR(self.xRR_obj.Y_, "kappa"), 3), -0.154)
 
 
 if __name__ == '__main__':

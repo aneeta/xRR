@@ -1,1 +1,1 @@
-__all__ = ["xrr", "distance_metrics"]
+__all__ = ["xrr_class", "distance_metrics", "tests"]
