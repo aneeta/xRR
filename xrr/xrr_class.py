@@ -3,7 +3,7 @@ import multiprocessing
 import numpy as np
 from nltk.metrics.agreement import AnnotationTask
 
-from .distance_metrics import *
+from xrr.distance_metrics import *
 
 class xRR:
     """Cross-Replication Reliability Measure (xRR) class
@@ -26,21 +26,25 @@ class xRR:
         logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %H:%M:%S %p', level=logging.DEBUG)
 
         if len(X[object_col].unique()) != len(Y[object_col].unique()):
-            ## TO DO: remove objects not judged by both if theres a difference
+            # TO DO: remove objects not judged by both if theres a difference
             valid_objects = np.intersect1d(X[object_col].unique(), Y[object_col].unique())
             X = X[X[object_col].isin(valid_objects)]
             Y = Y[Y[object_col].isin(valid_objects)]
 
-        self.X = X.loc[:,[rater_col,object_col,answer_col]]
-        self.Y = Y.loc[:,[rater_col,object_col,answer_col]]
-
-        self.X_ = X.pivot_table(index=rater_col, columns=object_col, values=answer_col, aggfunc="first")
-        self.Y_ = Y.pivot_table(index=rater_col, columns=object_col, values=answer_col, aggfunc="first")
+        self.X_ = X.loc[:,[rater_col,object_col,answer_col]].pivot_table(
+            index=rater_col, columns=object_col, values=answer_col, aggfunc="first"
+            )
+        self.Y_ = Y.loc[:,[rater_col,object_col,answer_col]].pivot_table(
+            index=rater_col, columns=object_col, values=answer_col, aggfunc="first"
+            )
 
         self.X_dict = self.X_.to_dict()
         self.Y_dict = self.Y_.to_dict()
 
-        self.dict_keys = list(self.Y_dict.keys())
+        self.X_dict = {k: {k_:v_ for k_, v_ in v.items() if not np.isnan(v_)} for k,v in self.X_dict.items()}
+        self.Y_dict = {k: {k_:v_ for k_, v_ in v.items() if not np.isnan(v_)} for k,v in self.Y_dict.items()}
+
+        self.dict_keys = list(self.X_dict.keys())
         
         self.R = self.X_.count().values
         self.S = self.Y_.count().values
@@ -49,7 +53,7 @@ class xRR:
         self.S_bold = self.S.sum()
 
         self.dist_func = dist_func
-        self.n = len(self.R) #equivalent to len(self.S)
+        self.n = len(X[object_col].unique())
         self.kappa = None
 
 
@@ -114,11 +118,18 @@ class xRR:
             num: observed disagreement value
         """
 
+        # do = 0
+        # ints = [i for i in range(self.n)]
+        # with multiprocessing.Pool(workers) as p:
+        #     results = p.map(self.do_inner, ints)
+        #     do = sum(results)
+        
+
         do = 0
-        ints = [i for i in range(self.n)]
-        with multiprocessing.Pool(workers) as p:
-            results = p.map(self.do_inner, ints)
-            do = sum(results)
+        for i in range(self.n):
+            for r in self.X_dict[self.dict_keys[i]].values():
+                for s in self.Y_dict[self.dict_keys[i]].values():
+                    do += self.dist_func(r,s)*(self.R[i] + self.S[i])/(self.R[i] * self.S[i])
         do /= (self.R_bold + self.S_bold)
         logging.info("observed disagreement: {}".format(do))
         return do
@@ -133,14 +144,25 @@ class xRR:
             num: expected disagreement value
         """
 
-        d_e = 0
-        ijs = [(i,j) for i in range(self.n) for j in range(self.n)]
-        with multiprocessing.Pool(workers) as p:
-            results = p.map(self.de_inner, ijs)
-            d_e = sum(results)
-        d_e /= (self.R_bold*self.S_bold)
-        logging.info("expected disagreement: {}".format(d_e))
-        return d_e
+        de = 0
+        
+        # try initialize subsets of this list parallely??
+        # ijs = [(i,j) for i in range(len(self.R)) for j in range(len(self.S))]
+        # with multiprocessing.Pool(workers) as p:
+        #     results = p.map(self.de_inner, ijs)
+        #     d_e = sum(results)
+        # d_e /= (self.R_bold*self.S_bold)
+        
+        for i in range(self.n):
+            for j in range(self.n):
+                for r in self.X_dict[self.dict_keys[i]].values():
+                    for s in self.Y_dict[self.dict_keys[j]].values():
+                        de += self.dist_func(r,s)
+        de /= (self.R_bold * self.S_bold)
+
+        logging.info("expected disagreement: {}".format(de))
+
+        return de
 
     def de_inner(self,a):
         """inner expected disagreement summation
@@ -154,6 +176,7 @@ class xRR:
         i = a[0]
         j = a[1]
         de = 0
+        #to try: itertools product
         for r in self.X_dict[self.dict_keys[i]].values():
             for s in self.Y_dict[self.dict_keys[j]].values():
                 de += self.dist_func(r,s)
@@ -172,5 +195,5 @@ class xRR:
         do = 0
         for r in self.X_dict[self.dict_keys[i]].values():
             for s in self.Y_dict[self.dict_keys[i]].values():
-                do += self.dist_func(r,s)
-        return do * (self.R[i]+self.S[i])/(self.R[i]*self.S[i])
+                do += self.dist_func(r,s)/(self.R[i]*self.S[i])
+        return do * (self.R[i]+self.S[i])/(self.R_bold + self.S_bold)
