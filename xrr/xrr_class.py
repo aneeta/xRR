@@ -95,7 +95,7 @@ class xRR:
         Returns:
             num: IRR value
         """
-        if irr.lower() not in ["alpha", "kappa", "pi", "s"]:
+        if irr.lower() not in ["alpha", "kappa", "pi"]:
             raise ValueError("Unknown IRR metric")
         if irr == "alpha":
             t = AnnotationTask(
@@ -103,14 +103,15 @@ class xRR:
             )
             return t.alpha()
         else:
+            # metrics for 2 raters only
+            if A.shape[0] != 2:
+                raise IndexError("Replication does not have 2 raters. Use alpha.")
             A_ = A.dropna(axis=1).unstack().reset_index().loc[:,[self.rater_col, self.object_col, 0]]
             t = AnnotationTask(data=A_.values)
             if irr == "kappa": 
                 return t.kappa()
             elif irr == "pi":
                 return t.pi()
-            elif irr == "s":
-                return t.S()
 
     def d_o(self,workers=multiprocessing.cpu_count()):
         """observed disagreement
