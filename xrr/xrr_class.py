@@ -31,6 +31,9 @@ class xRR:
             X = X[X[object_col].isin(valid_objects)]
             Y = Y[Y[object_col].isin(valid_objects)]
 
+        self.X = X.loc[:, [rater_col,object_col, answer_col]]
+        self.Y = Y.loc[:, [rater_col,object_col, answer_col]]
+
         self.X_ = X.pivot_table(index=rater_col, columns=object_col, values=answer_col, aggfunc="first")
         self.Y_ = Y.pivot_table(index=rater_col, columns=object_col, values=answer_col, aggfunc="first")
 
@@ -74,7 +77,7 @@ class xRR:
         Returns:
             num: normalized kappa_x value
         """
-        irrs = self._IRR(self.X_, irr)*self._IRR(self.Y_, irr)
+        irrs = self._IRR(self.X, irr)*self._IRR(self.Y, irr)
         if irrs <= 0:
             raise ValueError("Cannot normalize. IRR product is equal to or less than 0")
         if self.kappa:
@@ -99,15 +102,14 @@ class xRR:
             raise ValueError("Unknown IRR metric")
         if irr == "alpha":
             t = AnnotationTask(
-                data=A.unstack().reset_index().loc[:,[self.rater_col, self.object_col, 0]].values
+                data=A.values
             )
             return t.alpha()
         else:
             # metrics for 2 raters only
             if A.shape[0] != 2:
                 raise IndexError("Replication does not have 2 raters. Use alpha.")
-            A_ = A.dropna(axis=1).unstack().reset_index().loc[:,[self.rater_col, self.object_col, 0]]
-            t = AnnotationTask(data=A_.values)
+            t = AnnotationTask(data=A.values)
             if irr == "kappa": 
                 return t.kappa()
             elif irr == "pi":
